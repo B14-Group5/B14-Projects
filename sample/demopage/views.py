@@ -5,11 +5,31 @@ from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import FileSystemStorage
 import cv2
-import numpy as np
-import joblib
 import os
+import torch
+from torchvision import transforms
+from timm import create_model
 
-model = joblib.load(os.path.join(os.path.dirname(__file__), 'svm_rbf_model_svc.joblib'))
+# Define the path to the model
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Base directory of your Django project
+MODEL_PATH = os.path.join(BASE_DIR, 'vit_model.pth')  # Adjust 'vit_model.pth' to the actual path
+
+# Check if the model file exists
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"The model file was not found at {MODEL_PATH}")
+
+model = create_model('vit_base_patch16_224', pretrained=False, num_classes=8)  # Replace with your ViT model
+model.load_state_dict(torch.load(MODEL_PATH))  # Load your trained model's state dict
+model.eval()  # Set the model to evaluation mode
+
+# Image preprocessing
+preprocess = transforms.Compose([
+    transforms.ToPILImage(),  # Convert the image to PIL format
+    transforms.Resize((224, 224)),  # Resize to the input size of the model (adjust based on your ViT model)
+    transforms.ToTensor(),  # Convert to tensor
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Normalize like ImageNet
+])
+
 
 def home(request):
     return render(request, 'home.html')
@@ -34,18 +54,27 @@ def login(request):
         form = AuthenticationForm()
         return render(request, 'login.html', {'form': form})
 
+class CustomUserCreationForm(UserCreationForm):
+    class Meta:
+        model = UserCreationForm.Meta.model
+        fields = UserCreationForm.Meta.fields
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].widget.attrs.pop('required', None)  # Remove required attribute
+        self.fields['username'].widget.attrs.update({'class': 'form-control'})
 
 def signup(request):
     if request.user.is_authenticated:
         return redirect('/profile')  # Redirect to profile if already logged in
 
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             form.save()
             return redirect('/login')  # Redirect to the login page after successful signup
     else:
-        form = UserCreationForm()
+        form = CustomUserCreationForm()
 
     return render(request, 'signup.html', {'form': form})
 
@@ -66,19 +95,20 @@ def profile(request):
             #find the path of the image
             img_path = fs.path(filename)
  
-            #start implementing the opencv condition
-            img = cv2.imread(img_path,cv2.IMREAD_COLOR)
-            # Convert to grayscale (single channel)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            #resize the image for a constant use
-            img = cv2.resize(img,(64,64))
-            #flatten the image for the better clear shape of the disease spread on the skin
-            img = img.flatten()
-            #using the normalization predefined function to find the value
-            img = np.expand_dims(img,axis=0)
- 
-            #we sill start executing with our model
-            predict = model.predict(img)[0]
+            # Image loading and preprocessing
+            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
+
+            # Apply the preprocessing pipeline
+            input_tensor = preprocess(img)
+            input_batch = input_tensor.unsqueeze(0)  # Add batch dimension
+
+            # Perform the prediction
+            with torch.no_grad():
+                output = model(input_batch)
+            
+            # Assuming the model's output is a class index
+            _, predicted_class = torch.max(output, 1)
             
             ''''''
             skin_disease_names = ['Cellulitis','Impetigo','Athlete Foot','Nail Fungus',
@@ -131,8 +161,8 @@ def profile(request):
                         A chickenpox vaccine in childhood or a shingles vaccine in adulthood can minimize the risk of developing complications.'''
                         ]
  
-            result1 = skin_disease_names[predict]
-            result2 = diagnosis[predict]
+            result1 = skin_disease_names[predicted_class.item()]
+            result2 = diagnosis[predicted_class.item()]
  
     return render(request,'profile.html',{'img':img_url,'obj1':result1,'obj2':result2})
 

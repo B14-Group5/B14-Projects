@@ -115,17 +115,20 @@
     <main>
         <div class="login-form">
             <h2>Login</h2>
+            <br/>
             <form method="POST">
                 {% csrf_token %}
                 <div>
-                    <input type="text" name="username" placeholder="Enter Username">
                     {% if msg %}
                         <div class="error">{{ msg }}</div> <!-- Display error message -->
+                        <br/>
                     {% endif %}
+                    <input type="text" name="username" placeholder="Enter Username">
                 </div>
                 <div>
                     <input type="password" name="password" placeholder="Enter Password">
                 </div>
+                <br/>
                 <button type="submit">Log In</button>
             </form>
             <div class="link">
