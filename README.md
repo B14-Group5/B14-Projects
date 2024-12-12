@@ -81,4 +81,4 @@ Contributions are welcome! Feel free to fork the repository, make changes, and s
 
 ## 📄 License
 
-This project is licensed under the [MIT License]([https://opensource.org/license/mit](https://github.com/B14-Group5/B14-Projects/blob/main/LICENSE)).
+This project is licensed under the [MIT License](https://github.com/B14-Group5/B14-Projects/blob/main/LICENSE).
